@@ -83,7 +83,7 @@ object Notifier {
     }
 
     /** Only open links that point at eldorado.gg (relative links are resolved against it). */
-    private fun safeUrl(raw: String?): String? {
+    fun safeUrl(raw: String?): String? {
         if (raw.isNullOrBlank()) return null
         val full = if (raw.startsWith("/")) "https://www.eldorado.gg$raw" else raw
         val u = Uri.parse(full)

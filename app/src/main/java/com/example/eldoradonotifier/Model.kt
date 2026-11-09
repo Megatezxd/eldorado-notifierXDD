@@ -2,6 +2,16 @@ package com.example.eldoradonotifier
 
 import org.json.JSONObject
 
+/** One of the seller's own offers (used for the top-up pause/resume screen). */
+data class Offer(
+    val id: String,
+    val flexible: Boolean,
+    val title: String,
+    val game: String,
+    val state: String,
+    val price: Double?,
+)
+
 /** One Eldorado notification, flattened from NotificationPrivateGetDTO. */
 data class Notif(
     val id: String,
@@ -14,6 +24,7 @@ data class Notif(
     val subject: String?,
     val text: String?,
     val redirectUrl: String?,
+    val unread: Boolean = false,
 ) {
     val title: String
         get() = EVENT_TITLES[event]
@@ -94,6 +105,7 @@ data class Notif(
                 subject = c?.optString("subject")?.takeIf { it != "null" },
                 text = c?.optString("text")?.takeIf { it != "null" },
                 redirectUrl = c?.optString("redirectUrl")?.takeIf { it != "null" },
+                unread = n.optString("notificationReadStatus") == "IsUnread",
             )
         }
     }

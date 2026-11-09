@@ -39,17 +39,82 @@ class EldoradoApi(private val creds: () -> Pair<String, String>) {
         return t
     }
 
-    private fun authedGet(path: String): String {
+    private fun authedGet(path: String): String = authed("GET", path, null)
+
+    private fun authed(method: String, path: String, body: String?): String {
         return try {
-            call("GET", path, null, ensureToken())
+            call(method, path, body, ensureToken())
         } catch (e: ApiException) {
-            if (e.code == 401) call("GET", path, null, ensureToken(force = true)) else throw e
+            if (e.code == 401) call(method, path, body, ensureToken(force = true)) else throw e
         }
     }
 
+    /**
+     * Offers of one category (TopUp, GiftCard, Account, CustomItem) in the given state ("Active" or "Paused").
+     * Top-ups may live in the predefined or the flexible offer family, so both are queried.
+     */
+    fun listMyOffers(category: String, state: String): List<Offer> {
+        val out = ArrayList<Offer>()
+        var okSources = 0
+        var lastErr: Exception? = null
+        for (flex in listOf(false, true)) {
+            try {
+                out.addAll(listOffers(flex, category, state))
+                okSources++
+            } catch (e: ApiException) {
+                lastErr = e
+            }
+        }
+        if (okSources == 0) throw lastErr ?: IOException("مفيش رد من السيرفر")
+        return out
+    }
+
+    private fun listOffers(flex: Boolean, category: String, state: String): List<Offer> {
+        val base = if (flex) "/api/flexibleOffers/me/search" else "/api/predefinedOffers/me"
+        val res = ArrayList<Offer>()
+        var page = 1
+        while (page <= 10) {
+            val json = JSONObject(authedGet("$base?category=$category&offerState=$state&pageIndex=$page&pageSize=50"))
+            val arr = json.optJSONArray("results")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val cat = o.optString("category", "")
+                    if (cat.isNotEmpty() && cat != category && !cat[0].isDigit()) continue
+                    val st = o.optString("offerState", "")
+                    if (st.isNotEmpty() && st != state && !st[0].isDigit()) continue
+                    val id = o.optString("id", "")
+                    if (id.isEmpty()) continue
+                    val title = clean(o.optString("offerTitle", "")) ?: clean(o.optString("gameCategoryTitle", "")) ?: "عرض"
+                    val game = clean(o.optString("gameCategoryTitle", "")) ?: ""
+                    val price = o.optJSONObject("pricePerUnit")?.let { if (it.has("amount")) it.optDouble("amount") else null }
+                    res.add(Offer(id, flex, title, game, state, price))
+                }
+            }
+            if (page >= json.optInt("totalPages", 1)) break
+            page++
+        }
+        return res
+    }
+
+    private fun clean(s: String): String? = s.takeIf { it.isNotBlank() && it != "null" }
+
+    /** Pause or resume one offer. Empty body, success = HTTP 200. */
+    fun setPaused(offer: Offer, pause: Boolean) {
+        val family = if (offer.flexible) "flexibleOffersUser" else "predefinedOffersUser"
+        val action = if (pause) "pause" else "resume"
+        authed("PUT", "/api/$family/me/${offer.id}/$action", "")
+    }
+
     /** Unread notifications, newest first (max 20 per poll). */
-    fun fetchUnread(): List<Notif> {
-        val json = authedGet("/api/notifications/me?notificationReadStatuses=IsUnread&pageSize=20")
+    fun fetchUnread(): List<Notif> =
+        parse(authedGet("/api/notifications/me?notificationReadStatuses=IsUnread&pageSize=20"))
+
+    /** Latest notifications (read and unread) for the in-app list. */
+    fun fetchRecent(count: Int): List<Notif> =
+        parse(authedGet("/api/notifications/me?pageSize=${count.coerceIn(1, 50)}"))
+
+    private fun parse(json: String): List<Notif> {
         val arr = JSONObject(json).optJSONArray("results") ?: return emptyList()
         val out = ArrayList<Notif>(arr.length())
         for (i in 0 until arr.length()) {

@@ -39,6 +39,10 @@ class Prefs(context: Context) {
         get() = plain.getInt("interval", 60)
         set(v) { plain.edit().putInt("interval", v.coerceIn(30, 600)).apply() }
 
+    var offerCategory: String
+        get() = plain.getString("offer_cat", "TopUp") ?: "TopUp"
+        set(v) { plain.edit().putString("offer_cat", v).apply() }
+
     var status: String
         get() = plain.getString("status", "لسه متشغلش") ?: ""
         set(v) { plain.edit().putString("status", v).apply() }
@@ -56,6 +60,21 @@ class Prefs(context: Context) {
         } catch (e: Exception) {
         }
         return out
+    }
+
+    /** Offer ids that this app paused (so "resume" only touches those by default). */
+    fun pausedIds(): MutableSet<String> {
+        val out = LinkedHashSet<String>()
+        try {
+            val a = JSONArray(plain.getString("paused_by_app", "[]") ?: "[]")
+            for (i in 0 until a.length()) out.add(a.getString(i))
+        } catch (e: Exception) {
+        }
+        return out
+    }
+
+    fun savePausedIds(ids: Collection<String>) {
+        plain.edit().putString("paused_by_app", JSONArray(ids.toList()).toString()).apply()
     }
 
     fun saveSeen(ids: Collection<String>) {
